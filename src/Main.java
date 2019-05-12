@@ -129,21 +129,21 @@ public class Main {
             if(masterPktList[currSeqNumber].isSent() && masterTimer%timeBetweenSends == 0 &&
                     masterPktList[currSeqNumber-senderWindowSize+1].isConfirmed() &&
                     masterPktList[currSeqNumber-senderWindowSize+1].isConfirmedAtSender()) {
-                currSeqNumber++;
 
-                // HARD CODED PACKET LOSS on packet 3
-                if(currSeqNumber == 7) {
-                    masterPktList[7].setLost(true);
+                if(currSeqNumber < numberOfPackets-1) {
+                    currSeqNumber++;
+                    sendPacket(currSeqNumber, masterTimer);
+                    indicesOfUnconfirmedPacketsInPipeline.add(masterPktList[currSeqNumber].getSequenceNum());
                 }
 
-                sendPacket(currSeqNumber, masterTimer);
-
+                // hardcode lost packets here.....
                 // *****&&&&&& HARD CODED PACKET LOSS on packet 7
                 if(currSeqNumber == 7 && !(masterPktList[7].getNumberOfTimesLost() > 0) ) {
                     masterPktList[7].setLost(true);
                 }
+                // ***********************************************
 
-                indicesOfUnconfirmedPacketsInPipeline.add(masterPktList[currSeqNumber].getSequenceNum());
+
 
             }
 
