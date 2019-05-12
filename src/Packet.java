@@ -121,6 +121,7 @@ public class Packet {
         System.out.println("Packet sequence number: " + this.getSequenceNum() + "\n" +
                             "Sent: " + this.isSent() + "\n" +
                             "Arrived: " + this.isArrived() + "\n" +
-                            "Confirmed: " + this.isConfirmed());
+                            "Confirmed: " + this.isConfirmed() + "\n" +
+                            "Confirmed by Sender: " + this.isConfirmedAtSender() + "\n");
     }
 }
