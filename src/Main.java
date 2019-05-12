@@ -1,6 +1,8 @@
 import java.util.ArrayList;
 import java.util.Scanner;
 
+// *Notes: - Sender does not have a storage buffer, packets must be remade and retransmitted
+
 
 public class Main {
 
@@ -9,7 +11,9 @@ public class Main {
     private static int numberOfPackets;
 
     private static Packet[] masterPktList;
+    private static int currSeqNumber;
     private static ArrayList<Integer> indicesOfUnconfirmedPacketsInPipeline = new ArrayList<>();
+    private static ArrayList<Integer> indicesToBeRemovedFromPipelineList = new ArrayList<>();
 
     private static int endToEndTime;
     private static int timeOutAfter;
@@ -89,7 +93,7 @@ public class Main {
         System.out.println("Simulation started...");
 
         masterTimer = 0;
-        int currSeqNumber = -1;
+        currSeqNumber = -1;
         int arrivedPacketIndex;
 
         // send initial packets - send enough to fill sender window to start (assume that packets are sent
@@ -106,14 +110,17 @@ public class Main {
             masterTimer += timeBetweenSends;
         }
 
-        // *** MAIN LOOP ***
+        // *** MAIN LOOP *** ----------------------------------------------------------------------
+
         while(!masterPktList[masterPktList.length-1].isConfirmed() || masterTimer < 500000) {
+            System.out.println("------------");
             System.out.println("Timer: " + masterTimer);
+
             // check all packets in pipeline and check if one has arrived at sender
 
             // check to see if any packet confirmations have arrived back to the sender.
             updatePipelineList();
-            System.out.println(indicesOfUnconfirmedPacketsInPipeline);
+            System.out.println("Packets in pipeline: " + indicesOfUnconfirmedPacketsInPipeline);
 
             // delay loop to examine
             Thread.sleep(500);
@@ -123,10 +130,26 @@ public class Main {
                     masterPktList[currSeqNumber-senderWindowSize+1].isConfirmed() &&
                     masterPktList[currSeqNumber-senderWindowSize+1].isConfirmedAtSender()) {
                 currSeqNumber++;
+
+                // HARD CODED PACKET LOSS on packet 3
+                if(currSeqNumber == 7) {
+                    masterPktList[7].setLost(true);
+                }
+
                 sendPacket(currSeqNumber, masterTimer);
+
+                // *****&&&&&& HARD CODED PACKET LOSS on packet 7
+                if(currSeqNumber == 7 && !(masterPktList[7].getNumberOfTimesLost() > 0) ) {
+                    masterPktList[7].setLost(true);
+                }
+
                 indicesOfUnconfirmedPacketsInPipeline.add(masterPktList[currSeqNumber].getSequenceNum());
 
             }
+
+            // check timeout timer on all packets currently in pipeline, if timed out setup pipeline and point current
+            // sequence number to packet before lost packet
+            checkTimeOutOnPipelinedPackets();
 
             // update status based on timers for arrived packet and get that packet
             arrivedPacketIndex = getArrivedPacketIndex();
@@ -136,7 +159,6 @@ public class Main {
                 masterPktList[arrivedPacketIndex].setTimeConfirmed(masterTimer);
                 System.out.println("Packet " + masterPktList[arrivedPacketIndex].getSequenceNum() + " has been confirmed" +
                         " by receiver.");
-
             }
             else if(arrivedPacketIndex != -1 && masterPktList[arrivedPacketIndex-1].isArrived()) {
                 masterPktList[arrivedPacketIndex].setConfirmed(true);
@@ -155,6 +177,7 @@ public class Main {
             // clock masterTimer
             masterTimer++;
 
+        // *** MAIN LOOP *** ----------------------------------------------------------------------
         }
     }
 
@@ -163,7 +186,7 @@ public class Main {
         Packet[] masterPktLst = new Packet[numPackets];
 
         for(int i = 0; i < masterPktLst.length; i++) {
-            Packet newPacket = new Packet(i, false, false, false, false);
+            Packet newPacket = new Packet(i, false, false, false, false, false, 0);
             masterPktLst[i] = newPacket;
         }
         // print all packets for status check
@@ -176,10 +199,10 @@ public class Main {
     private static int getArrivedPacketIndex() {
         int arrivedPktIndex = -1;
         for( int pktIndex : indicesOfUnconfirmedPacketsInPipeline ) {
-            // if packet hasn't arrived at receiver yet and it has traversed the path to receiver
+            // if packet hasn't arrived at receiver yet and it has traversed the path to receiver without getting lost,
             // update packet status to "arrived" and record time arrived at receiver
-            if(!masterPktList[pktIndex].isArrived() &&
-                    masterTimer - masterPktList[pktIndex].getTimeSent() == endToEndTime) {
+            if(!masterPktList[pktIndex].isArrived() && !masterPktList[pktIndex].isLost() &&
+                    masterTimer - masterPktList[pktIndex].getTimeSent() >= endToEndTime) {
                 masterPktList[pktIndex].setArrived(true);
                 masterPktList[pktIndex].setTimeArrived(masterTimer);
                 arrivedPktIndex = masterPktList[pktIndex].getSequenceNum();
@@ -190,6 +213,7 @@ public class Main {
     }
 
     private static void sendPacket(int pktIndex, int sendTime) {
+        masterPktList[pktIndex].resetStatus();
         masterPktList[pktIndex].setSent(true);
         masterPktList[pktIndex].setTimeSent(sendTime);
         System.out.println("Packet " + masterPktList[pktIndex].getSequenceNum() + " has been sent.");
@@ -197,15 +221,40 @@ public class Main {
 
     // takes care of confirmation at sender and updates pipeline list
     private static void updatePipelineList() {
+
+        indicesToBeRemovedFromPipelineList.clear();
+
+        // collect all indices that must be removed from pipeline list
         for( Integer pktIndex : indicesOfUnconfirmedPacketsInPipeline ) {
-            if(masterPktList[pktIndex].isConfirmed() && masterTimer - masterPktList[pktIndex].getTimeConfirmed() ==
+            if(masterPktList[pktIndex].isConfirmed() && masterTimer - masterPktList[pktIndex].getTimeConfirmed() >=
                     endToEndTime) {
                 masterPktList[pktIndex].setConfirmedAtSender(true);
-                indicesOfUnconfirmedPacketsInPipeline.remove(pktIndex);
+                indicesToBeRemovedFromPipelineList.add(pktIndex);
                 System.out.println("Packet " + masterPktList[pktIndex].getSequenceNum() + " has been confirmed back at Sender.");
             }
         }
+        for( Integer pIndex : indicesToBeRemovedFromPipelineList ) {
+            indicesOfUnconfirmedPacketsInPipeline.remove(pIndex);
+        }
     }
+
+
+    private static void checkTimeOutOnPipelinedPackets() {
+        for( Integer pktIndex : indicesOfUnconfirmedPacketsInPipeline ) {
+            if(masterTimer - masterPktList[pktIndex].getTimeSent() >= timeOutAfter) {
+                System.out.println("Packet " + masterPktList[pktIndex].getSequenceNum() + " has timed out");
+                masterPktList[pktIndex].setNumberOfTimesLost(masterPktList[pktIndex].getNumberOfTimesLost()+1);
+                currSeqNumber = masterPktList[pktIndex].getSequenceNum() - 1;
+
+                // remove all packets from pipeline that come after lost packet that are not confirmed
+                indicesOfUnconfirmedPacketsInPipeline.subList(indicesOfUnconfirmedPacketsInPipeline.indexOf(
+                        masterPktList[currSeqNumber+1].getSequenceNum()), indicesOfUnconfirmedPacketsInPipeline.size()).clear();
+                break;
+            }
+        }
+
+    }
+
 }
 
 
