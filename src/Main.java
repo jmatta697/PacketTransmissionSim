@@ -106,7 +106,7 @@ public class Main {
             System.out.println("Packets in pipeline: " + indicesOfUnconfirmedPacketsInPipeline);
 
             // delay loop to examine
-            Thread.sleep(10);
+            Thread.sleep(5);
 
             // run send script at appropriate time and if window is not full
             if(masterPktList[currSeqNumber].isSent() && masterTimer - timeLastPacketSent >= timeBetweenSends &&
